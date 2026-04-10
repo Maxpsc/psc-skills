@@ -1,4 +1,4 @@
-#!/usr/bin/env bun
+#!/usr/bin/env node
 /**
  * Chrome Extension Icon Generator
  * Generates multiple icon sizes from a text description using baoyu-imagine
@@ -23,7 +23,7 @@ interface CliArgs {
 
 function printUsage(): void {
   console.log(`Usage:
-  bun scripts/main.ts --prompt "A blue robot icon" --output ./icons
+  npx -y node scripts/main.ts --prompt "A blue robot icon" --output ./icons
 
 Options:
   -p, --prompt <text>       Icon description (required)
@@ -33,22 +33,51 @@ Options:
 `);
 }
 
-async function resolveBunX(): Promise<string> {
-  try {
-    const { execSync } = await import("node:child_process");
-    execSync("bun --version", { stdio: "pipe" });
-    return "bun";
-  } catch {
-    return "npx -y bun";
+function getVersionedPath(dir: string, filename: string): string {
+  const ext = ".png";
+  const base = filename.replace(ext, "");
+  let version = 1;
+  let outputPath = join(dir, filename);
+
+  while (existsSync(outputPath)) {
+    version++;
+    outputPath = join(dir, `${base}_v${version}${ext}`);
   }
+
+  return outputPath;
+}
+
+async function ensureSharp(): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(
+      "npx",
+      ["-y", "sharp", "--version"],
+      { stdio: "pipe" }
+    );
+    proc.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        console.log("Installing sharp...");
+        const installProc = spawn(
+          "npx",
+          ["-y", "npm", "install", "-g", "sharp"],
+          { stdio: "inherit" }
+        );
+        installProc.on("close", (installCode) => {
+          if (installCode === 0) resolve();
+          else reject(new Error("Failed to install sharp"));
+        });
+      }
+    });
+  });
 }
 
 async function callBaoyuImagine(
   prompt: string,
   outputPath: string,
   provider?: string,
-  model?: string,
-  bunX: string = "bun"
+  model?: string
 ): Promise<boolean> {
   const baoyuImaginePath = join(
     homedir(),
@@ -70,7 +99,7 @@ async function callBaoyuImagine(
   }
 
   return new Promise((resolve) => {
-    const proc = spawn(bunX, args, {
+    const proc = spawn("npx", ["-y", "bun", ...args], {
       stdio: "inherit",
       cwd: __dirname,
     });
@@ -83,15 +112,16 @@ async function callBaoyuImagine(
 async function resizeImage(
   inputPath: string,
   outputPath: string,
-  size: number,
-  bunX: string = "bun"
+  size: number
 ): Promise<void> {
   const { spawn } = await import("node:child_process");
 
   return new Promise((resolve, reject) => {
     const proc = spawn(
-      bunX,
+      "npx",
       [
+        "-y",
+        "bun",
         "-e",
         `const sharp = require('sharp'); const input = process.argv[1]; const size = parseInt(process.argv[2]); const output = process.argv[3]; sharp(input).resize(size, size).png().toFile(output).catch(e => { console.error(e); process.exit(1); });`,
         inputPath,
@@ -131,19 +161,17 @@ async function main() {
     mkdirSync(outputDir, { recursive: true });
   }
 
-  const bunX = await resolveBunX();
-  console.log(`Using runtime: ${bunX}`);
+  console.log(`Using runtime: npx -y`);
 
-  // Step 1: Generate base image at 512x512 using baoyu-imagine
-  const baseImagePath = join(outputDir, "_base_icon.png");
+  // Step 1: Generate base image using baoyu-imagine
+  const baseImagePath = getVersionedPath(outputDir, "_base_icon.png");
   console.log(`Generating base icon: ${args.prompt}`);
 
   const success = await callBaoyuImagine(
     args.prompt + " (Chrome extension icon, PNG format, fill the entire frame with no empty space/padding, edge-to-edge square composition, simple clean design, high contrast)",
     baseImagePath,
     args.provider,
-    args.model,
-    bunX
+    args.model
   );
 
   if (!success) {
@@ -153,17 +181,19 @@ async function main() {
 
   // Step 2: Resize to all required sizes
   console.log("Resizing to required sizes...");
+  const createdFiles: string[] = [];
   for (const size of ICON_SIZES) {
-    const outputPath = join(outputDir, `icon${size}.png`);
-    console.log(`  Creating icon${size}.png...`);
+    const iconPath = getVersionedPath(outputDir, `icon${size}.png`);
+    console.log(`  Creating ${iconPath}...`);
 
     try {
-      await resizeImage(baseImagePath, outputPath, size, bunX);
+      await resizeImage(baseImagePath, iconPath, size);
+      createdFiles.push(iconPath);
     } catch (e) {
       console.error(`Failed to create icon${size}.png:`, e);
-      // Fallback: copy base if resize fails
       try {
-        writeFileSync(outputPath, readFileSync(baseImagePath));
+        writeFileSync(iconPath, readFileSync(baseImagePath));
+        createdFiles.push(iconPath);
       } catch {}
     }
   }
@@ -173,20 +203,23 @@ async function main() {
     unlinkSync(baseImagePath);
   } catch {}
 
+  const fileList = createdFiles.map(f => `  - ${f}`).join("\n");
+  const manifestIcons = ICON_SIZES.map(size => {
+    const file = createdFiles.find(f => f.includes(`icon${size}`));
+    const filename = file ? file.split("/").pop() : `icon${size}.png`;
+    return `    "${size}": "${filename}"`;
+  }).join(",\n");
+
   console.log(`
 Icon generation complete!
 
 Files created in ${outputDir}:
-  - icon16.png
-  - icon48.png
-  - icon128.png
+${fileList}
 
 Add to your manifest.json:
 {
   "icons": {
-    "16": "icon16.png",
-    "48": "icon48.png",
-    "128": "icon128.png"
+${manifestIcons}
   }
 }
 `);
