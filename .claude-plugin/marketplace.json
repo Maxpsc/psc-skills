@@ -1,0 +1,22 @@
+{
+  "name": "psc-skills",
+  "owner": {
+    "name": "Peng Sichen",
+    "email": "pengsicheng@example.com"
+  },
+  "metadata": {
+    "description": "Personal Claude skills for daily work efficiency",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "psc-skills",
+      "description": "Personal skills for content generation and productivity",
+      "source": "./",
+      "strict": true,
+      "skills": [
+        "./skills/psc-chrome-icon"
+      ]
+    }
+  ]
+}
