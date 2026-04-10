@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync, unlinkSync } from "
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 
 const ICON_SIZES = [16, 48, 128];
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -49,8 +50,12 @@ async function callBaoyuImagine(
   model?: string,
   bunX: string = "bun"
 ): Promise<boolean> {
+  const baoyuImaginePath = join(
+    homedir(),
+    ".claude/plugins/marketplaces/baoyu-skills/skills/baoyu-imagine/scripts/main.ts"
+  );
   const args = [
-    `${__dirname}/../../../.agents/skills/baoyu-imagine/scripts/main.ts`,
+    baoyuImaginePath,
     "--prompt",
     prompt,
     "--image",
@@ -78,30 +83,12 @@ async function callBaoyuImagine(
 async function resizeImage(
   inputPath: string,
   outputPath: string,
-  size: number
+  size: number,
+  bunX: string = "bun"
 ): Promise<void> {
-  // Use bun's built-in sharp-like resize if available,
-  // otherwise we'll generate at different sizes via the prompt
   const { spawn } = await import("node:child_process");
 
-  // Try using sharp via npx
-  const script = `
-    const { spawn } = require('child_process');
-    const proc = spawn('bun', ['-e', \`
-      const sharp = require('sharp');
-      const input = process.argv[1];
-      const size = parseInt(process.argv[2]);
-      const output = process.argv[3];
-      sharp(input)
-        .resize(size, size)
-        .png()
-        .toFile(output)
-        .catch(e => { console.error(e); process.exit(1); });
-    \`, '--', inputPath, size.toString(), outputPath], { stdio: 'inherit' });
-  `;
-
   return new Promise((resolve, reject) => {
-    // Direct sharp usage
     const proc = spawn(
       bunX,
       [
@@ -171,7 +158,7 @@ async function main() {
     console.log(`  Creating icon${size}.png...`);
 
     try {
-      await resizeImage(baseImagePath, outputPath, size);
+      await resizeImage(baseImagePath, outputPath, size, bunX);
     } catch (e) {
       console.error(`Failed to create icon${size}.png:`, e);
       // Fallback: copy base if resize fails
