@@ -1,8 +1,8 @@
 {
   "name": "psc-skills",
   "owner": {
-    "name": "Peng Sichen",
-    "email": "pengsicheng@example.com"
+    "name": "Maxpsc",
+    "email": "majiapsc@126.com"
   },
   "metadata": {
     "description": "Personal Claude skills for daily work efficiency",
@@ -15,7 +15,8 @@
       "source": "./",
       "strict": true,
       "skills": [
-        "./skills/psc-chrome-icon"
+        "./skills/psc-chrome-icon",
+        "./skills/psc-xiaofanxiong-recipe"
       ]
     }
   ]
